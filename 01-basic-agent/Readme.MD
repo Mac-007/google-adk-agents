@@ -1,8 +1,18 @@
 # Basic Google ADK Agent
 
-This example demonstrates how to create and run a basic Google ADK agent using `LiteLlm`, OpenRouter, and `InMemoryRunner`.
+Creates and runs a basic Google ADK agent using `LiteLlm`, OpenRouter, and `InMemoryRunner`.
 
-The code is intentionally kept simple so that each step of the agent setup and execution can be understood independently.
+### What the Code Does
+
+* Loads the API configuration from `.env`
+* Configures LiteLLM for model access
+* Creates a Google ADK agent with a model and system instruction
+* Runs the agent using `InMemoryRunner`
+* Sends a prompt to the agent
+* Processes the response events returned by ADK
+* Prints only the generated text response
+* Filters out thought/reasoning content
+* Handles common authentication, rate-limit, and model errors
 
 ---
 
