@@ -1,4 +1,4 @@
-# Google ADK Agent with Tool Calling
+# Lesson 2 — Tool Calling
 
 This example demonstrates how to build a **Google ADK agent with custom Python tools** using **LiteLLM** and **OpenRouter**.
 

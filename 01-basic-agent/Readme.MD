@@ -1,4 +1,4 @@
-# Basic Google ADK Agent with Dynamic OpenRouter Model Selection
+# Lesson 1 — Basic Google ADK Agent (with Dynamic OpenRouter Model Selection)
 
 Creates and runs a basic Google ADK agent using `LiteLlm`, OpenRouter, and `InMemoryRunner`.
 

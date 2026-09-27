@@ -1,4 +1,4 @@
-# Lesson 4 — Tool Schemas, Parameters, Return Values, and Errors
+# Lesson 3 — Tool Schemas, Parameters, Return Values, and Errors
 
 This lesson explains how an agent understands a tool and how Python functions become usable capabilities for an ADK agent.
 
