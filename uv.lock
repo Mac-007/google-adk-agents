@@ -706,12 +706,14 @@ source = { virtual = "." }
 dependencies = [
     { name = "google-adk", extra = ["extensions"] },
     { name = "python-dotenv" },
+    { name = "requests" },
 ]
 
 [package.metadata]
 requires-dist = [
     { name = "google-adk", extras = ["extensions"], specifier = ">=2.10.0" },
     { name = "python-dotenv", specifier = ">=1.2.3" },
+    { name = "requests", specifier = ">=2.34.2" },
 ]
 
 [[package]]
