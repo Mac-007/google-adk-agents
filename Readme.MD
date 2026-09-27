@@ -4,6 +4,17 @@ A collection of experiments and implementations exploring **Google Agent Develop
 
 The current project includes a basic Google ADK agent that uses **LiteLLM + OpenRouter** and dynamically selects an available **free OpenRouter model that supports tool calling**, instead of hard-coding a specific model.
 
+## Key Components
+The main building blocks include:
+- Agent — an intelligent worker, typically an LlmAgent.
+- Tools — functions, APIs, search, databases, external services, etc.
+- Workflow agents — deterministic orchestration such as sequential, parallel, and loop execution.
+- Multi-agent systems — agents can delegate work to other specialized agents.
+- Sessions/state/context — maintain information across agent execution.
+- Callbacks — intercept and customize agent/tool execution.
+- Evaluation & tracing — inspect and evaluate agent behavior.
+- Deployment — including containerized deployment and Google Cloud options.
+
 ## Current Setup
 
 - Python

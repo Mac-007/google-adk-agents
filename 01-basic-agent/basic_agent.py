@@ -38,7 +38,7 @@ if PROJECT_ROOT not in sys.path:
 import litellm
 from dotenv import load_dotenv
 
-from google.adk.agents import Agent
+from google.adk.agents import Agent  # We're importing ADK's Agent class.
 from google.adk.runners import InMemoryRunner
 from google.adk.models.lite_llm import LiteLlm
 
@@ -115,7 +115,8 @@ print(
 
 agent = Agent(
     name="test_agent",
-
+    # We're creating an agent object.
+    
     # model_selector.py returns something like:
     #
     # inclusionai/ling-3.0-flash-fin:free
@@ -127,7 +128,8 @@ agent = Agent(
     model=LiteLlm(
         model=f"openrouter/{MODEL_ID}"
     ),
-
+    # This tells the agent which LLM should perform the reasoning/generation.
+    
     # This instruction tells the model how it should behave.
 
     instruction=(
