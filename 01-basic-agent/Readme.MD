@@ -1,12 +1,77 @@
-# Basic Google ADK Agent
+# Basic Google ADK Agent with Dynamic OpenRouter Model Selection
 
 Creates and runs a basic Google ADK agent using `LiteLlm`, OpenRouter, and `InMemoryRunner`.
 
-### What the Code Does
+The project also includes a separate model-selection module that dynamically discovers available OpenRouter models and selects a free model that supports tool calling.
 
-* Loads the API configuration from `.env`
-* Configures LiteLLM for model access
-* Creates a Google ADK agent with a model and system instruction
+---
+
+## Project Structure
+
+```text
+google-adk-agents/
+│
+├── .env
+│
+├── model_selector.py
+│
+└── 02/
+    └── basic_agent.py
+```
+
+### File Responsibilities
+
+| File                | Responsibility                                    |
+| ------------------- | ------------------------------------------------- |
+| `.env`              | Stores the OpenRouter API key                     |
+| `model_selector.py` | Discovers and selects a suitable OpenRouter model |
+| `02/basic_agent.py` | Creates and runs the Google ADK agent             |
+
+The important design principle is that **model selection is separated from agent logic**.
+
+```text
+basic_agent.py
+      │
+      │ select_model()
+      ▼
+model_selector.py
+      │
+      │ OpenRouter /models
+      ▼
+Available models
+      │
+      │ filter
+      ▼
+Free + tool-capable model
+      │
+      │ return model ID
+      ▼
+basic_agent.py
+      │
+      ▼
+LiteLlm
+      │
+      ▼
+OpenRouter
+      │
+      ▼
+Selected model
+```
+
+---
+
+# What the Code Does
+
+The project:
+
+* Loads the OpenRouter API key from `.env`
+* Separates model selection from agent creation
+* Queries OpenRouter for currently available models
+* Finds free models
+* Filters models that support tool calling
+* Selects one suitable model dynamically
+* Passes the selected model to LiteLLM
+* Creates a Google ADK agent
 * Runs the agent using `InMemoryRunner`
 * Sends a prompt to the agent
 * Processes the response events returned by ADK
@@ -16,212 +81,355 @@ Creates and runs a basic Google ADK agent using `LiteLlm`, OpenRouter, and `InMe
 
 ---
 
-## 1. Import the Required Libraries
+# 1. Environment Configuration
 
-```python
-import os
-import asyncio
-
-import litellm
-from dotenv import load_dotenv
-
-from google.adk.agents import Agent
-from google.adk.runners import InMemoryRunner
-from google.adk.models.lite_llm import LiteLlm
-```
-
-The first two imports are standard Python modules.
-
-```python
-import os
-```
-
-`os` provides access to operating-system functionality. In this example, it is mainly used to work with environment variables.
-
-The API key is retrieved using:
-
-```python
-os.getenv("API_KEY")
-```
-
-It is also used later to set another environment variable required by LiteLLM.
-
-```python
-import asyncio
-```
-
-The agent is executed asynchronously. Therefore, `asyncio` is used to run the asynchronous `main()` function at the end of the program.
-
----
-
-The next imports are third-party libraries.
-
-```python
-import litellm
-```
-
-LiteLLM is used as the model interface in this example. The code also uses it to suppress additional debug information.
-
-```python
-from dotenv import load_dotenv
-```
-
-`load_dotenv()` loads environment variables from a `.env` file. This allows the API key to be kept outside the Python source code.
-
----
-
-The remaining imports come from Google ADK:
-
-```python
-from google.adk.agents import Agent
-```
-
-`Agent` is used to create the ADK agent.
-
-```python
-from google.adk.runners import InMemoryRunner
-```
-
-`InMemoryRunner` is used to execute the agent while keeping the relevant session information in memory.
-
-```python
-from google.adk.models.lite_llm import LiteLlm
-```
-
-`LiteLlm` is used to configure the model that the ADK agent will use through LiteLLM.
-
----
-
-## 2. Load Environment Variables
-
-```python
-load_dotenv()
-```
-
-This line loads the variables defined in the `.env` file into the application's environment.
-
-For example, the `.env` file can contain:
+Create a `.env` file in the project root:
 
 ```text
 API_KEY=your_openrouter_api_key
 ```
 
-Instead of writing the API key directly into the Python code, the program reads it from the environment.
+The project uses `load_dotenv()` to load this value into the environment.
 
-This keeps configuration separate from the application code.
-
-The important point here is that `load_dotenv()` does not itself retrieve the API key into the `API_KEY` Python variable. It makes the values available as environment variables. The code retrieves the value in the next step.
-
----
-
-## 3. Read the API Key
+The API key is then read using:
 
 ```python
 API_KEY = os.getenv("API_KEY")
 ```
 
-`os.getenv()` reads the value of an environment variable.
-
-Here, the code asks for:
-
-```text
-API_KEY
-```
-
-and stores the resulting value in the Python variable:
-
-```python
-API_KEY
-```
-
-At this point, the program has the API key available in memory.
-
-The code then checks whether a value was actually provided:
-
-```python
-if not API_KEY:
-    raise RuntimeError(
-        "API_KEY is missing. Please add your OpenRouter API key "
-        "to the .env file."
-    )
-```
-
-This check is useful because the rest of the program requires the API key to communicate with the model.
-
-If the variable is missing or empty, the program stops immediately by raising a `RuntimeError`.
-
-Instead of allowing the program to continue and fail later with a potentially less obvious authentication error, the code gives a clear message explaining what needs to be configured.
-
----
-
-## 4. Configure the OpenRouter API Key for LiteLLM
+The value is also assigned to:
 
 ```python
 os.environ["OPENROUTER_API_KEY"] = API_KEY
 ```
 
-The application initially reads the key from:
+because LiteLLM expects the OpenRouter API key through the `OPENROUTER_API_KEY` environment variable.
 
-```text
-API_KEY
-```
-
-However, the LiteLLM configuration expects the OpenRouter API key to be available through:
-
-```text
-OPENROUTER_API_KEY
-```
-
-Therefore, this line takes the value stored in `API_KEY` and assigns it to the `OPENROUTER_API_KEY` environment variable.
-
-Conceptually, the flow is:
+The configuration flow is:
 
 ```text
 .env
-  ↓
+  │
+  ▼
 API_KEY
-  ↓
+  │
+  ▼
 OPENROUTER_API_KEY
-  ↓
+  │
+  ▼
 LiteLLM
-  ↓
+  │
+  ▼
 OpenRouter
 ```
 
-This allows the model configuration later in the code to use OpenRouter through LiteLLM without putting the API key directly into the model configuration.
+Keeping the API key in `.env` prevents the key from being hard-coded into the Python source code.
 
 ---
 
-## 5. Suppress LiteLLM Debug Information
+# 2. Dynamic Model Selection
 
-```python
-litellm.suppress_debug_info = True
+The model-selection logic is located in:
+
+```text
+model_selector.py
 ```
 
-LiteLLM can produce additional information while making model requests.
+The ADK agent does not directly specify a particular OpenRouter model.
 
-For this learning example, the intention is to keep the terminal output focused on the actual agent response.
-
-Setting:
+Instead, `basic_agent.py` imports:
 
 ```python
-litellm.suppress_debug_info = True
+from model_selector import select_model
 ```
 
-reduces the additional LiteLLM debug output.
+and calls:
 
-This does not change the agent's instructions or the model itself. It only controls the amount of debug information displayed by LiteLLM.
+```python
+MODEL_ID = select_model()
+```
+
+This keeps model selection separate from the agent implementation.
 
 ---
 
-## 6. Create the Google ADK Agent
+# 3. Get Available OpenRouter Models
+
+`model_selector.py` queries the OpenRouter models endpoint:
+
+```python
+url = "https://openrouter.ai/api/v1/models"
+```
+
+The request uses the OpenRouter API key:
+
+```python
+headers = {
+    "Authorization": f"Bearer {API_KEY}",
+    "Content-Type": "application/json",
+}
+```
+
+The response contains information about the models currently available through OpenRouter.
+
+The basic flow is:
+
+```text
+model_selector.py
+      │
+      ▼
+OpenRouter /api/v1/models
+      │
+      ▼
+Model catalog
+      │
+      ▼
+Python list of models
+```
+
+---
+
+# 4. Find Free Models
+
+The model selector examines the pricing information for every model.
+
+A model is considered free when both its prompt and completion prices are zero:
+
+```python
+is_free = (
+    prompt_price == "0"
+    and completion_price == "0"
+)
+```
+
+This prevents the agent from automatically selecting a paid model.
+
+The selector therefore looks for:
+
+```text
+Prompt price = 0
+Completion price = 0
+```
+
+---
+
+# 5. Find Models That Support Tools
+
+Not every model supports tool calling.
+
+The selector checks the model's:
+
+```python
+supported_parameters
+```
+
+and looks for:
+
+```python
+"tools"
+```
+
+The check is:
+
+```python
+supports_tools = (
+    "tools" in supported_parameters
+)
+```
+
+A model is selected only when both conditions are satisfied:
+
+```text
+Free
+ +
+Supports tools
+ =
+Candidate model
+```
+
+The filtering logic is therefore:
+
+```python
+if is_free and supports_tools:
+    free_tool_models.append(model)
+```
+
+This is important because the agent will eventually provide tools to the model.
+
+---
+
+# 6. Select a Model
+
+After filtering the available models, the selector checks whether at least one suitable model exists:
+
+```python
+if not models:
+    raise RuntimeError(
+        "No free model with tool-calling support "
+        "is currently available on OpenRouter."
+    )
+```
+
+If suitable models are available, the current implementation selects the first matching model:
+
+```python
+selected_model = models[0]
+```
+
+The model ID is then returned:
+
+```python
+return model_id
+```
+
+For example, the returned value could look like:
+
+```text
+inclusionai/ling-3.0-flash-fin:free
+```
+
+The important point is that the model ID is **discovered dynamically**, rather than being hard-coded into the agent.
+
+---
+
+# 7. Why Model Selection Is Separate
+
+The model selector is intentionally kept separate from the ADK agent.
+
+Without separation, the agent might contain something like:
+
+```python
+model=LiteLlm(
+    model="openrouter/some-model:free"
+)
+```
+
+This means changing the model requires editing the agent code.
+
+With the new design:
+
+```python
+MODEL_ID = select_model()
+
+agent = Agent(
+    ...
+    model=LiteLlm(
+        model=f"openrouter/{MODEL_ID}"
+    ),
+)
+```
+
+The agent does not need to know how the model was selected.
+
+This gives the project a cleaner separation of responsibilities:
+
+```text
+model_selector.py
+    │
+    └── Which model should I use?
+
+basic_agent.py
+    │
+    └── How should my ADK agent work?
+```
+
+---
+
+# 8. Import the Model Selector
+
+Because `basic_agent.py` is inside the `02` directory while `model_selector.py` is in the project root, the project root is added to Python's import path.
+
+The structure is:
+
+```text
+google-adk-agents/
+│
+├── model_selector.py
+│
+└── 02/
+    └── basic_agent.py
+```
+
+`basic_agent.py` determines the project root:
+
+```python
+PROJECT_ROOT = os.path.dirname(
+    os.path.dirname(
+        os.path.abspath(__file__)
+    )
+)
+```
+
+Then it adds the root to `sys.path`:
+
+```python
+if PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, PROJECT_ROOT)
+```
+
+Now this import works:
+
+```python
+from model_selector import select_model
+```
+
+---
+
+# 9. Configure LiteLLM
+
+After the model selector returns a model ID:
+
+```python
+MODEL_ID = select_model()
+```
+
+the model is passed to LiteLLM:
+
+```python
+model=LiteLlm(
+    model=f"openrouter/{MODEL_ID}"
+)
+```
+
+For example, if the selector returns:
+
+```text
+inclusionai/ling-3.0-flash-fin:free
+```
+
+LiteLLM receives:
+
+```text
+openrouter/inclusionai/ling-3.0-flash-fin:free
+```
+
+The model access flow is:
+
+```text
+Google ADK
+    │
+    ▼
+LiteLlm
+    │
+    ▼
+OpenRouter
+    │
+    ▼
+Selected free model
+```
+
+---
+
+# 10. Create the Google ADK Agent
+
+The agent is created using:
 
 ```python
 agent = Agent(
     name="test_agent",
 
     model=LiteLlm(
-        model="openrouter/nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free"
+        model=f"openrouter/{MODEL_ID}"
     ),
 
     instruction=(
@@ -231,49 +439,33 @@ agent = Agent(
 )
 ```
 
-This is the central part of the example.
+There are three important pieces here.
 
-The `Agent` object represents the agent that will receive the user's request and use the configured model to generate a response.
-
-There are three important pieces of configuration here:
-
-### Agent name
+## Agent Name
 
 ```python
 name="test_agent"
 ```
 
-This gives the agent the name `test_agent`.
+This gives the agent its name.
 
-The name identifies this particular agent configuration.
+---
 
-### Model
+## Model
 
 ```python
 model=LiteLlm(
-    model="openrouter/nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free"
+    model=f"openrouter/{MODEL_ID}"
 )
 ```
 
-The `model` parameter tells the ADK agent which model interface to use.
+The model ID comes from `model_selector.py`.
 
-Here, `LiteLlm` is used as the interface between Google ADK and the model.
+The agent therefore does not need to know which particular free model is currently available.
 
-The model identifier specifies the model being accessed through OpenRouter.
+---
 
-So rather than the `Agent` directly containing an OpenRouter-specific API call, the model is configured through:
-
-```text
-Google ADK Agent
-       ↓
-    LiteLlm
-       ↓
-   OpenRouter
-       ↓
-     Model
-```
-
-### Instruction
+## Instruction
 
 ```python
 instruction=(
@@ -282,85 +474,55 @@ instruction=(
 )
 ```
 
-The `instruction` defines how the agent should behave.
+The instruction defines how the agent should behave.
 
-In this example, the instruction tells the model two things:
-
-1. Behave as a helpful assistant.
-2. Keep its answers brief and clear.
-
-The instruction is part of the agent configuration. It is not the actual user request that will be sent later.
-
-The distinction is:
+The instruction is different from the user's request.
 
 ```text
-instruction
-    ↓
-Defines how the agent should behave
+Agent instruction
+      │
+      ▼
+How the agent should behave
 
-user request
-    ↓
-Defines what the agent should do
+User request
+      │
+      ▼
+What the agent should do
 ```
 
 ---
 
-## 7. Create an In-Memory Runner
+# 11. Create an In-Memory Runner
+
+The agent is passed to an `InMemoryRunner`:
 
 ```python
-runner = InMemoryRunner(agent=agent)
+runner = InMemoryRunner(
+    agent=agent
+)
 ```
-
-After creating the agent, the code creates a runner and passes the agent to it.
 
 The runner is responsible for executing the agent.
 
-In this example, `InMemoryRunner` is used because this is a simple learning and testing program. The session-related information is kept in memory rather than being stored in an external database.
+For this learning project, `InMemoryRunner` is useful because the application does not require an external database for session information.
 
-The relationship between the two objects is:
+The relationship is:
 
 ```text
 Agent
-  ↓
+  │
+  ▼
 InMemoryRunner
-  ↓
+  │
+  ▼
 Agent execution
 ```
 
-The agent defines what should be executed, while the runner provides the mechanism for actually running it.
-
 ---
 
-## 8. Define the Main Function
+# 12. Run the Agent
 
-```python
-async def main():
-    """
-    Run the ADK agent and print its text response.
-    """
-```
-
-The main execution logic is placed inside an asynchronous function called `main()`.
-
-The function is defined using:
-
-```python
-async def
-```
-
-rather than the normal:
-
-```python
-def
-```
-
-because the agent execution later uses `await`.
-
-The documentation string explains the purpose of the function: run the agent and print its text response.
-
----
-
-## 9. Run the Agent
+The agent is executed using:
 
 ```python
 events = await runner.run_debug(
@@ -368,358 +530,404 @@ events = await runner.run_debug(
 )
 ```
 
-This is where the agent is actually executed.
+The request is passed to the agent.
 
-The input passed to `run_debug()` is:
+`run_debug()` returns events generated during execution.
 
-```text
-Say hello and tell me that you are working.
-```
-
-This is the request that the agent receives.
-
-The `await` keyword is required because `run_debug()` is asynchronous.
-
-The returned result is stored in:
-
-```python
-events
-```
-
-The code then works with these returned events instead of assuming that the result is simply one text string.
-
-Conceptually:
+The flow is:
 
 ```text
 User request
-     ↓
+      │
+      ▼
 run_debug()
-     ↓
-Agent execution
-     ↓
+      │
+      ▼
+ADK Agent
+      │
+      ▼
+Selected OpenRouter model
+      │
+      ▼
 Events
 ```
 
 ---
 
-## 10. Print the Agent Response
+# 13. Process ADK Events
 
-```python
-print("\nAgent response:")
-print("-" * 40)
-```
-
-These lines simply make the terminal output easier to read.
-
-The first line prints:
-
-```text
-Agent response:
-```
-
-The second line prints a separator made from 40 hyphens.
-
----
-
-The code then loops through the events:
+The returned events are processed using:
 
 ```python
 for event in events:
 ```
 
-The runner can return multiple events, so the code examines them one by one.
-
-Before accessing the event's content, it checks:
+Not every event necessarily contains displayable content, so the code checks:
 
 ```python
 if not event.content:
     continue
 ```
 
-Not every event necessarily contains content that needs to be displayed.
-
-If an event does not contain content, `continue` skips that event and moves to the next one.
-
----
-
-## 11. Process Content Parts
+Then it examines the content parts:
 
 ```python
 for part in event.content.parts:
 ```
 
-An event can contain content, and that content can contain multiple parts.
-
-The code therefore loops through:
+The structure is:
 
 ```text
 events
-  ↓
+  │
+  ▼
 event
-  ↓
+  │
+  ▼
 event.content
-  ↓
+  │
+  ▼
 event.content.parts
-  ↓
+  │
+  ▼
 part
 ```
 
-Each `part` is then inspected.
-
 ---
 
-## 12. Print Only Normal Text
+# 14. Print Only Normal Text
+
+The code checks:
 
 ```python
 if part.text and not part.thought:
     print(part.text)
 ```
 
-This condition makes sure that the code prints the appropriate text content.
+This means the program:
 
-First:
+1. Checks that the part contains text.
+2. Checks that it is not marked as a thought.
+3. Prints the text.
 
-```python
-part.text
-```
-
-checks whether the part contains text.
-
-Then:
-
-```python
-not part.thought
-```
-
-ensures that the part is not marked as a thought.
-
-Only when both conditions are satisfied does the code execute:
-
-```python
-print(part.text)
-```
-
-This means the program displays the normal text response while avoiding thought content.
-
-The important idea is that the code does not simply print every piece of content returned by the runner. It explicitly checks what type of content it is dealing with.
+This keeps the terminal output focused on the response intended for the user.
 
 ---
 
-## 13. Finish the Response Output
+# 15. Error Handling
 
-```python
-print("-" * 40)
-```
-
-After processing the events, another separator is printed.
-
-This simply marks the end of the displayed agent response in the terminal.
-
----
-
-## 14. Handle Errors
-
-The agent execution is wrapped in a `try` block:
+The program catches exceptions:
 
 ```python
 try:
     ...
 except Exception as error:
+    ...
 ```
 
-The purpose is to prevent an exception from producing an unstructured traceback as the only useful information for the user.
-
-If something goes wrong, the exception is captured in:
-
-```python
-error
-```
-
-The code converts it into a string:
+The error is converted into a string:
 
 ```python
 error_message = str(error)
 ```
 
-This makes it possible to inspect the message and identify several common error cases.
+The code then checks several common cases.
+
+## Rate Limiting
+
+```python
+if (
+    "429" in error_message
+    or "rate-limited" in error_message.lower()
+):
+```
+
+The program reports that the model is temporarily rate-limited.
 
 ---
 
-## 15. Handle Rate-Limit Errors
+## Authentication
+
+The code checks:
 
 ```python
-if "429" in error_message or "rate-limited" in error_message.lower():
-    print(
-        "\nThe model is temporarily rate-limited. "
-        "Please try again later."
-    )
+"401"
+"403"
 ```
 
-The code checks whether the error message contains either:
-
-```text
-429
-```
-
-or:
-
-```text
-rate-limited
-```
-
-If so, it prints a message explaining that the model is temporarily rate-limited.
-
-This provides a more understandable message than simply displaying the raw exception.
-
----
-
-## 16. Handle Authentication or Permission Errors
-
-```python
-elif "401" in error_message or "403" in error_message:
-    print(
-        "\nAuthentication or permission error. "
-        "Please check your OpenRouter API key."
-    )
-```
-
-The code checks for HTTP status codes:
-
-```text
-401
-403
-```
-
-In this example, these are treated as authentication or permission-related problems.
+These are treated as authentication or permission-related problems.
 
 The user is instructed to check the OpenRouter API key.
 
 ---
 
-## 17. Handle Model Not Found Errors
+## Model Not Found
+
+The code checks:
 
 ```python
-elif "404" in error_message:
-    print(
-        "\nModel not found. "
-        "Please check the OpenRouter model name."
-    )
+"404"
 ```
 
-If the error contains `404`, the program reports that the configured model could not be found.
+If found, it reports:
 
-This points the user toward checking the model identifier:
-
-```python
-model="openrouter/nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free"
+```text
+Model not found.
+Please check the OpenRouter model name.
 ```
+
+Because the model is now selected dynamically, a 404 may indicate that the selected model is no longer available or that the provider endpoint has changed.
 
 ---
 
-## 18. Handle Unexpected Errors
+# 16. Start the Program
 
-```python
-else:
-    print("\nSomething went wrong:")
-    print(error_message)
-```
-
-If the error does not match any of the specific cases above, the program prints the actual error message.
-
-This is useful during exploration because unexpected errors can still be inspected directly from the terminal.
-
----
-
-## 19. Start the Program
+The program starts with:
 
 ```python
 if __name__ == "__main__":
     asyncio.run(main())
 ```
 
-This is the entry point of the Python file.
+This executes the asynchronous `main()` function.
 
-The condition:
-
-```python
-if __name__ == "__main__":
-```
-
-checks whether this file is being executed directly.
-
-If it is, the following line runs:
-
-```python
-asyncio.run(main())
-```
-
-`main()` is an asynchronous function, so `asyncio.run()` is used to start it.
-
-This begins the complete execution flow:
+The complete execution flow is now:
 
 ```text
 Start program
-    ↓
-load_dotenv()
-    ↓
+      │
+      ▼
+Load .env
+      │
+      ▼
 Read API key
-    ↓
-Configure OpenRouter
-    ↓
-Create Agent
-    ↓
+      │
+      ▼
+Configure OPENROUTER_API_KEY
+      │
+      ▼
+Import model_selector
+      │
+      ▼
+Query OpenRouter models
+      │
+      ▼
+Filter free models
+      │
+      ▼
+Filter tool-capable models
+      │
+      ▼
+Select model
+      │
+      ▼
+Create LiteLlm
+      │
+      ▼
+Create ADK Agent
+      │
+      ▼
 Create InMemoryRunner
-    ↓
+      │
+      ▼
 Run agent
-    ↓
+      │
+      ▼
 Receive events
-    ↓
-Inspect event content
-    ↓
+      │
+      ▼
+Process event content
+      │
+      ▼
 Print text response
 ```
 
 ---
 
-## Complete Picture
+# 17. Running the Project
 
-The important pieces of this example work together as follows:
+From the project root:
 
-```text
-             .env
-              │
-              ▼
-          API_KEY
-              │
-              ▼
-     OPENROUTER_API_KEY
-              │
-              ▼
-          LiteLlm
-              │
-              ▼
-        OpenRouter
-              │
-              ▼
-            Model
-              │
-              ▼
-         ADK Agent
-              │
-              ▼
-      InMemoryRunner
-              │
-              ▼
-        run_debug()
-              │
-              ▼
-           events
-              │
-              ▼
-      event.content.parts
-              │
-              ▼
-        Text response
+```powershell
+uv run .\02\basic_agent.py
 ```
 
-The key learning from this code is the complete execution path: the program first prepares the model credentials, creates an ADK agent with a model and instruction, gives that agent to a runner, executes a request, receives events, and finally extracts and prints the agent's text response.
+The model selector will first query OpenRouter and select a suitable model.
+
+You should see output similar to:
+
+```text
+[MODEL SELECTOR] Selected model: inclusionai/ling-3.0-flash-fin:free
+
+[MAIN] Model selected: inclusionai/ling-3.0-flash-fin:free
+
+Agent response:
+----------------------------------------
+Hello! I am working.
+----------------------------------------
+```
+
+The exact model selected can change because the selector uses the models currently returned by OpenRouter.
+
+---
+
+# 18. Installing Dependencies
+
+If the project does not already have the required packages, install them using `uv`.
+
+For example:
+
+```powershell
+uv add google-adk
+uv add litellm
+uv add python-dotenv
+uv add requests
+```
+
+The `requests` package is used by `model_selector.py` to query the OpenRouter models API.
+
+---
+
+# 19. Complete Architecture
+
+The project now separates the application into two main layers.
+
+```text
+                 ┌─────────────────────┐
+                 │      .env            │
+                 │                     │
+                 │ API_KEY=...         │
+                 └──────────┬──────────┘
+                            │
+                            ▼
+                 ┌─────────────────────┐
+                 │ model_selector.py   │
+                 │                     │
+                 │ Get models           │
+                 │ Filter free          │
+                 │ Filter tools         │
+                 │ Select model         │
+                 └──────────┬──────────┘
+                            │
+                            │ model ID
+                            ▼
+                 ┌─────────────────────┐
+                 │  basic_agent.py     │
+                 │                     │
+                 │ Create LiteLlm      │
+                 │ Create ADK Agent    │
+                 │ Create Runner       │
+                 │ Run Agent           │
+                 └──────────┬──────────┘
+                            │
+                            ▼
+                     ┌─────────────┐
+                     │  LiteLLM    │
+                     └──────┬──────┘
+                            │
+                            ▼
+                     ┌─────────────┐
+                     │ OpenRouter  │
+                     └──────┬──────┘
+                            │
+                            ▼
+                   Selected Free Model
+```
+
+---
+
+# 20. Why This Architecture Is Useful
+
+The main benefit is that **model selection and agent behavior are independent**.
+
+If you want to change how models are selected, modify:
+
+```text
+model_selector.py
+```
+
+If you want to change the agent's behavior, modify:
+
+```text
+02/basic_agent.py
+```
+
+For example, later the selector could be extended to consider:
+
+```text
+Free
+  +
+Tool calling
+  +
+Context length
+  +
+Vision support
+  +
+Provider
+  +
+Model preference
+```
+
+without changing the ADK agent.
+
+The architecture can therefore evolve from:
+
+```text
+Simple Agent
+```
+
+into:
+
+```text
+Model Selector
+      │
+      ▼
+ADK Agent
+      │
+      ▼
+Tools
+```
+
+while keeping the individual responsibilities separate.
+
+---
+
+# Summary
+
+This project demonstrates a basic Google ADK agent using OpenRouter through LiteLLM, while keeping model selection separate from the agent implementation.
+
+The main learning points are:
+
+1. Store API credentials in `.env`.
+2. Load environment variables with `load_dotenv()`.
+3. Configure `OPENROUTER_API_KEY` for LiteLLM.
+4. Use a separate module to discover available models.
+5. Filter for free models.
+6. Filter for models supporting tool calling.
+7. Dynamically select a model.
+8. Pass the selected model to `LiteLlm`.
+9. Create an ADK `Agent`.
+10. Execute it with `InMemoryRunner`.
+11. Process the events returned by ADK.
+12. Print only normal text responses.
+13. Keep model-selection logic independent from agent logic.
+
+The resulting structure is:
+
+```text
+model_selector.py
+       │
+       │ selects model
+       ▼
+basic_agent.py
+       │
+       │ creates agent
+       ▼
+LiteLlm
+       │
+       ▼
+OpenRouter
+       │
+       ▼
+Selected free model
+```
